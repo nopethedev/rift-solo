@@ -1,0 +1,77 @@
+{
+ "loadType": "search",
+ "data": [
+  {
+   "encoded": "QAABGwMANEdldCBMdWNreSAoZmVhdC4gUGhhcnJlbGwgV2lsbGlhbXMgYW5kIE5pbGUgUm9kZ2VycykACURhZnQgUHVuawAAAAAABaVQAAs0RDd1NUtGN1NQOAABACtodHRwczovL3d3dy55b3V0dWJlLmNvbS93YXRjaD92PTREN3U1S0Y3U1A4AQCAaHR0cHM6Ly95dDMuZ29vZ2xldXNlcmNvbnRlbnQuY29tL041NWFyQ0dqNjlndHc2dGhYSzhKVVBpc3hvVllpd3VJRVE3STZTR2xrRXlOY1NKN3hJV1BlNzZWdXUxU2lVcVJ5eDV3OXF2Ul96VjhmVjNDV1E9dzEwMDAtaDEwMDAAAAd5b3V0dWJlAAAAAAAAAAA=",
+   "info": {
+    "identifier": "4D7u5KF7SP8",
+    "isSeekable": true,
+    "author": "Daft Punk",
+    "length": 370000,
+    "isStream": false,
+    "position": 0,
+    "title": "Get Lucky (feat. Pharrell Williams and Nile Rodgers)",
+    "uri": "https://www.youtube.com/watch?v=4D7u5KF7SP8",
+    "sourceName": "youtube",
+    "artworkUrl": "https://yt3.googleusercontent.com/N55arCGj69gtw6thXK8JUPisxoVYiwuIEQ7I6SGlkEyNcSJ7xIWPe76Vuu1SiUqRyx5w9qvR_zV8fV3CWQ=w1000-h1000",
+    "isrc": null
+   },
+   "pluginInfo": {},
+   "userData": {}
+  },
+  {
+   "encoded": "QAABJQMAQUdldCBMdWNreSAoUmFkaW8gRWRpdCAtIGZlYXQuIFBoYXJyZWxsIFdpbGxpYW1zIGFuZCBOaWxlIFJvZGdlcnMpAAlEYWZ0IFB1bmsAAAAAAAPMqAALUmdydF84bVhySzgAAQAraHR0cHM6Ly93d3cueW91dHViZS5jb20vd2F0Y2g/dj1SZ3J0XzhtWHJLOAEAfWh0dHBzOi8veXQzLmdvb2dsZXVzZXJjb250ZW50LmNvbS9IcWVncVQ0dHIydTBJc09xQW1VZ0lMSnVuQndISGtqbDlzNUw3dDAyWkZjR3NSUXBxS3RtTTdZbGtlcXpEZFhpOTI2bU52QW4yVUp1NDhzPXcxMDAwLWgxMDAwAAAHeW91dHViZQAAAAAAAAAA",
+   "info": {
+    "identifier": "Rgrt_8mXrK8",
+    "isSeekable": true,
+    "author": "Daft Punk",
+    "length": 249000,
+    "isStream": false,
+    "position": 0,
+    "title": "Get Lucky (Radio Edit - feat. Pharrell Williams and Nile Rodgers)",
+    "uri": "https://www.youtube.com/watch?v=Rgrt_8mXrK8",
+    "sourceName": "youtube",
+    "artworkUrl": "https://yt3.googleusercontent.com/HqegqT4tr2u0IsOqAmUgILJunBwHHkjl9s5L7t02ZFcGsRQpqKtmM7YlkeqzDdXi926mNvAn2UJu48s=w1000-h1000",
+    "isrc": null
+   },
+   "pluginInfo": {},
+   "userData": {}
+  },
+  {
+   "encoded": "QAAA7AMACkdFVCBMVUNLWSEABFlkQkIAAAAAAANfSAALNC1EX1hvczhmckEAAQAraHR0cHM6Ly93d3cueW91dHViZS5jb20vd2F0Y2g/dj00LURfWG9zOGZyQQEAgGh0dHBzOi8veXQzLmdvb2dsZXVzZXJjb250ZW50LmNvbS9WTXZNUW1PQTBCLWtYWXVLTVlLaEhaTG9VNExaOV85aU44UzlMR01zX0dPV0xXZVIxeEt3cnRfSmcwZlVYMFNqSGZBaWFlM19IcVFUUTlNMlVRPXcxMDAwLWgxMDAwAAAHeW91dHViZQAAAAAAAAAA",
+   "info": {
+    "identifier": "4-D_Xos8frA",
+    "isSeekable": true,
+    "author": "YdBB",
+    "length": 221000,
+    "isStream": false,
+    "position": 0,
+    "title": "GET LUCKY!",
+    "uri": "https://www.youtube.com/watch?v=4-D_Xos8frA",
+    "sourceName": "youtube",
+    "artworkUrl": "https://yt3.googleusercontent.com/VMvMQmOA0B-kXYuKMYKhHZLoU4LZ9_9iN8S9LGMs_GOWLWeR1xKwrt_Jg0fUX0SjHfAiae3_HqQTQ9M2UQ=w1000-h1000",
+    "isrc": null
+   },
+   "pluginInfo": {},
+   "userData": {}
+  },
+  {
+   "encoded": "QAABAAMAFkdldCBMdWNreSAoUmFkaW8gRWRpdCkADkpheWRlbiBBbnRob255AAAAAAADyMAAC2tDT3czczRnMElRAAEAK2h0dHBzOi8vd3d3LnlvdXR1YmUuY29tL3dhdGNoP3Y9a0NPdzNzNGcwSVEBAH5odHRwczovL3l0My5nb29nbGV1c2VyY29udGVudC5jb20vNTFONEtuTENwU2FYaENLTFZiVnR0YTAxNFgxQUh3OXhRLTMxbWFJeHZfSXJjT1AzRHlDbWEwX2NCWnBsb0NxTFRhRDExUy1CckZjU2trVUQ9dzEwMDAtaDEwMDAAAAd5b3V0dWJlAAAAAAAAAAA=",
+   "info": {
+    "identifier": "kCOw3s4g0IQ",
+    "isSeekable": true,
+    "author": "Jayden Anthony",
+    "length": 248000,
+    "isStream": false,
+    "position": 0,
+    "title": "Get Lucky (Radio Edit)",
+    "uri": "https://www.youtube.com/watch?v=kCOw3s4g0IQ",
+    "sourceName": "youtube",
+    "artworkUrl": "https://yt3.googleusercontent.com/51N4KnLCpSaXhCKLVbVtta014X1AHw9xQ-31maIxv_IrcOP3DyCma0_cBZploCqLTaD11S-BrFcSkkUD=w1000-h1000",
+    "isrc": null
+   },
+   "pluginInfo": {},
+   "userData": {}
+  }
+ ]
+}
