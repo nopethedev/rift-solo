@@ -40,6 +40,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.nopethedev.riftsolo.core.Track
+import com.nopethedev.riftsolo.core.taste.Album
+import com.nopethedev.riftsolo.core.taste.AlbumPick
+import com.nopethedev.riftsolo.core.taste.Artist
+import com.nopethedev.riftsolo.core.taste.ArtistPick
+import androidx.compose.foundation.lazy.items
 import com.nopethedev.riftsolo.ui.components.Artwork
 import com.nopethedev.riftsolo.ui.components.Avatar
 import com.nopethedev.riftsolo.ui.components.CoverCard
@@ -56,6 +61,9 @@ data class HomeState(
     val likedCount: Int = 0,
     val recent: List<Track> = emptyList(),
     val rows: List<HomeRow> = emptyList(),
+    /** "Fans of your artists also like" and an album from each. */
+    val artists: List<ArtistPick> = emptyList(),
+    val albums: List<AlbumPick> = emptyList(),
 )
 
 class HomeActions(
@@ -64,6 +72,8 @@ class HomeActions(
     val openRecent: () -> Unit = {},
     val openProfile: () -> Unit = {},
     val refresh: () -> Unit = {},
+    val openArtist: (Artist) -> Unit = {},
+    val openAlbum: (Album) -> Unit = {},
 )
 
 @Composable
@@ -93,10 +103,11 @@ fun HomeScreen(state: HomeState, actions: HomeActions, contentPadding: PaddingVa
         if (state.recent.isNotEmpty()) item {
             Section("Jump back in", "Your recent plays")
             LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                itemsIndexed(state.recent.take(12), key = { _, t -> "r" + t.id }) { i, t -> CoverCard(t.title, t.artist, t.id, t.artworkUrl, { actions.play(state.recent, i) }) }
+                itemsIndexed(state.recent.take(12), key = { _, t -> "r" + t.id }) { i, t -> CoverCard(t.title, t.artist, t.id, t.artworkUrl, { actions.play(state.recent, i) }, track = t) }
             }
         }
-        state.rows.forEach { row ->
+        state.rows.forEachIndexed { index, row ->
+            if (index == 2) discovery(state, actions)
             item(key = row.id) {
                 Section(row.title, row.subtitle)
                 when {
@@ -105,12 +116,33 @@ fun HomeScreen(state: HomeState, actions: HomeActions, contentPadding: PaddingVa
                     }
                     row.error != null && row.tracks.isEmpty() -> Text(row.error, Modifier.padding(horizontal = 16.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2)
                     else -> LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                        itemsIndexed(row.tracks, key = { _, t -> row.id + t.id }) { i, t -> CoverCard(t.title, t.artist, t.id, t.artworkUrl, { actions.play(row.tracks, i) }) }
+                        itemsIndexed(row.tracks, key = { _, t -> row.id + t.id }) { i, t -> CoverCard(t.title, t.artist, t.id, t.artworkUrl, { actions.play(row.tracks, i) }, track = t) }
                     }
                 }
             }
         }
+        if (state.rows.size < 3) discovery(state, actions)
         item { Spacer(Modifier.height(24.dp)) }
+    }
+}
+
+private fun androidx.compose.foundation.lazy.LazyListScope.discovery(state: HomeState, actions: HomeActions) {
+    if (state.artists.isNotEmpty()) item(key = "discover-artists") {
+        val names = state.artists.flatMap { it.because }.distinct().take(2)
+        Section("Fans also like", if (names.isEmpty()) "Artists for you" else "Because you listen to ${names.joinToString(" and ")}")
+        LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            items(state.artists, key = { "a" + it.artist.name }) { p ->
+                CoverCard(p.artist.name, "Like ${p.because.first()}", p.artist.name, p.artist.pictureUrl, { actions.openArtist(p.artist) }, size = 128.dp, circle = true)
+            }
+        }
+    }
+    if (state.albums.isNotEmpty()) item(key = "discover-albums") {
+        Section("Albums for you", "From artists your artists' fans play")
+        LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            items(state.albums, key = { "al" + it.album.deezerId }) { p ->
+                CoverCard(p.album.title, listOf(p.album.artist, p.album.year).filter { it.isNotBlank() }.joinToString(" · "), "al${p.album.deezerId}", p.album.coverUrl, { actions.openAlbum(p.album) })
+            }
+        }
     }
 }
 

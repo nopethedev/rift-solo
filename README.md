@@ -1,6 +1,8 @@
 # Rift Solo
 
-The lightweight, portable Rift. An Android app (Kotlin, Jetpack Compose, Material 3) that searches, plays and collects music with no Rift server needed: songs are found through Lavalink nodes (public ones built in, or your own) and their audio is extracted on the phone by [NewPipe Extractor](https://github.com/TeamNewPipe/NewPipeExtractor).
+[![Build](https://github.com/nopethedev/rift-solo/actions/workflows/build.yml/badge.svg)](https://github.com/nopethedev/rift-solo/actions/workflows/build.yml)
+
+The lightweight, portable Rift, for **Android, Windows, Linux and macOS**. It's an app (Kotlin, Jetpack Compose / Compose Desktop, Material 3) that searches, plays and collects music with no Rift server needed: songs are found through Lavalink nodes (public ones built in, or your own) and their audio is extracted on the phone by [NewPipe Extractor](https://github.com/TeamNewPipe/NewPipeExtractor).
 
 - **Tabs**: Home (a feed built from the genres you pick), Search (browse tiles + results from YouTube / SoundCloud), Library (liked songs, history, playlists) and Profile (engine settings, components, stats).
 - **Onboarding**: welcome → name and avatar → 3+ genres → where to search (Lavalink nodes, or the phone) → background playback (battery optimisation off + notification permission, with an extra hint on brands like Xiaomi / Samsung that kill background apps) → the sources are checked automatically, plus the "Allow all songs" consent.
@@ -8,6 +10,13 @@ The lightweight, portable Rift. An Android app (Kotlin, Jetpack Compose, Materia
 - **Taste profile**: learned on the phone from likes, playlist adds, plays, songs finished and songs skipped (30-day half-life), plus the onboarding genres. It drives "Made for you", "More like …", the order of the genre mixes, playlist suggestions and autoplay when the queue runs out. Profile shows top artists and genres.
 - **Cache**: everything from the network is kept on the phone (see below), so free nodes with strict rate limits are asked as little as possible.
 - **Lavalink nodes**: ships with public nodes ready to use, and you can add your own (form, or paste the `{"host", "port", "password", "secure"}` JSON that node lists share). Nodes are searched in order, offline ones skipped.
+- **Song menu**: long-press any song (or use ⋯) for Play next, Add to queue, Start radio, Add to playlist, Like, Remove from this playlist, Go to artist, Follow, **Exclude from your taste**, and Share. On desktop, the ⋯ button and right-click open the same menu.
+- **Artists and albums**: artist pages (popular songs, albums, "Fans also like", Follow) and album pages. Home has a **Fans also like** row and an **Albums for you** row: Deezer's related-artists lists for the artists you follow and play most (built from what those artists' fans listen to), plus the artists that show up in YouTube mixes of your top songs. Artists liked by several of your artists' fans rank highest, and each one brings its most popular album.
+- **Lyrics**: in the player (the lyrics button). They come from the Lavalink node's lyrics plugin when it has one (LavaLyrics with LavaSrc / youtube-source, or DuncteBot's java-lyrics-plugin), otherwise from [LRCLIB](https://lrclib.net). Synced lyrics follow the song; tap a line to jump to it.
+- **Account and sync** (optional, with [rift-server](https://github.com/nopethedev/rift-server)): Profile → Account → Sign up. The library, playlists, likes, follows and exclusions sync every time the app opens, and shortly after anything changes. Each item carries a "changed at" time, so two devices merge cleanly, including removals.
+- **Shared cache**: with a server set, search results, similar songs, lyrics, artist data and stream links are shared anonymously with other users (no account attached), so busy nodes are asked less. You can turn it off any time in Profile → Account.
+- **Liquid glass** (Android, Profile → Appearance): the bottom bar becomes a floating glass pill ([QWEA0/Liquid-Glass-Android](https://github.com/QWEA0/Liquid-Glass-Android)) that refracts what scrolls under it. Off by default.
+- **Desktop**: the same engines, cache, taste and sync, with a sidebar layout and a player bar. Audio plays through [Lavaplayer](https://github.com/lavalink-devs/lavaplayer), the decoder Lavalink itself uses. It also has **Discord Rich Presence**: "Listening to" with the song, artist, cover, a time bar and an "Open song" button, like Spotify's.
 - **Player**: Media3 ExoPlayer in a `MediaSessionService` (background playback, notification and lock-screen controls), mini player plus a full-screen Now Playing view.
 
 ## How it maps to Rift
@@ -71,24 +80,37 @@ Live checks (network): `./gradlew :app:testDebugUnitTest -PliveNodes --tests '*L
 
 ## Build
 
-Requirements: JDK 17+ and the Android SDK (platform 36). `local.properties` is not committed: set `sdk.dir` or `ANDROID_HOME`.
+Requirements: JDK 17+ (21 recommended) and, for Android, the Android SDK (platform 36). `local.properties` is not committed: set `sdk.dir` or `ANDROID_HOME`.
 
 ```bash
-./gradlew :app:assembleDebug          # app/build/outputs/apk/debug/app-debug.apk
-./gradlew :app:recordRoborazziDebug   # renders every screen with sample data into app/screenshots/
+./gradlew :app:assembleDebug                        # Android: app/build/outputs/apk/debug/app-debug.apk
+./gradlew :desktop:run                              # desktop app, from source
+./gradlew :desktop:packageDistributionForCurrentOS  # installer for this OS: .msi/.exe, .dmg, .deb/.rpm
+./gradlew :core:test :app:testDebugUnitTest :desktop:test
+./gradlew :app:recordRoborazziDebug                 # renders every Android screen into app/screenshots/
 ```
+
+**GitHub Actions** (`.github/workflows/build.yml`) runs on every push. It tests everything and builds the Android APK, the Windows `.msi`/`.exe`, the Linux `.deb`/`.rpm` and the macOS `.dmg`, all downloadable from the run's artifacts. Pushing a `v*` tag also publishes them as a GitHub release. The macOS build isn't notarized, so the first time you open it, right-click the app and choose Open.
+
+**Discord presence** needs a Discord application. Create one named "Rift Solo" at <https://discord.com/developers/applications> (Discord shows the app's name), then pass its Application ID in one of these ways:
+- as a repository secret named `DISCORD_APP_ID`, for CI builds;
+- with `-PdiscordAppId=…`, for local builds;
+- with the `RIFT_DISCORD_APP_ID` environment variable, when running.
 
 The screenshot tests (`app/src/test/.../ScreenshotTest.kt`) use Robolectric + Roborazzi, so no emulator is needed.
 
 ## Layout
 
 ```
-app/src/main/java/com/nopethedev/riftsolo/
-  core/Models.kt              Track, Playlist, genres, engine choice
-  core/engine/                Engine interface + chain, NewPipeEngine, LavalinkEngine + nodes, Components (onboarding checks)
-  core/data/                  SettingsStore (DataStore), LibraryStore (liked / history / playlists as JSON)
-  core/player/                PlaybackService (Media3), PlayerController (queue, resolve-on-play, retry on expired URLs)
-  ui/                         Theme (Rift palette), onboarding, home, search, library, profile, player, root scaffold
+core/      shared by Android and desktop (plain Kotlin/JVM)
+  Models.kt                 Track, Playlist, genres, engine choice
+  engine/                   Engine chain, NewPipeEngine, LavalinkEngine + nodes + lyrics plugin, Spotify import
+  data/                     Cache (+ shared server layer), LibraryStore (likes, history, playlists, follows, exclusions), Settings
+  taste/                    Taste profile, Recommender, ArtistGraph ("fans also like" + albums)
+  lyrics/                   LyricsService (Lavalink plugin → LRCLIB)
+  sync/                     RiftServer client, AccountStore, SyncManager, LibraryMerge
+app/       Android: Media3 player, DataStore settings, Compose UI, liquid glass
+desktop/   Windows/macOS/Linux: Compose Desktop UI, Lavaplayer audio, Discord presence
 ```
 
 ## License

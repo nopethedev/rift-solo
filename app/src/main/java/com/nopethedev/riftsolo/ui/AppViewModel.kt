@@ -39,6 +39,17 @@ import com.nopethedev.riftsolo.core.data.Cache
 import com.nopethedev.riftsolo.core.system.Battery
 import com.nopethedev.riftsolo.core.taste.Taste
 import com.nopethedev.riftsolo.core.taste.TasteProfile
+import com.nopethedev.riftsolo.core.taste.Album
+import com.nopethedev.riftsolo.core.taste.Artist
+import com.nopethedev.riftsolo.core.taste.Discovery
+import com.nopethedev.riftsolo.core.data.ArtistRef
+import com.nopethedev.riftsolo.ui.artist.AlbumPageState
+import com.nopethedev.riftsolo.ui.artist.ArtistPageState
+import com.nopethedev.riftsolo.ui.player.LyricsUi
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.map
 
 class AppViewModel(private val app: RiftSoloApp) : ViewModel() {
     val settings: StateFlow<Settings?> = app.settings.settings.stateIn(viewModelScope, SharingStarted.Eagerly, null)
@@ -88,12 +99,124 @@ class AppViewModel(private val app: RiftSoloApp) : ViewModel() {
 
     private fun startMain() {
         app.player.connect()
+        // Sync every time the app opens, then a little after the library changes (while signed in).
+        viewModelScope.launch { app.sync.sync() }
+        viewModelScope.launch {
+            @OptIn(kotlinx.coroutines.FlowPreview::class)
+            library.drop(1).debounce(AUTO_SYNC_DELAY_MS).collect { if (app.accounts.account.value.signedIn) app.sync.sync() }
+        }
+        viewModelScope.launch {
+            // Lyrics follow the song while they're open.
+            player.map { it.current }.distinctUntilChanged().collect { t -> if (_lyrics.value.showing && t != null) loadLyrics(t) }
+        }
         viewModelScope.launch {
             // Make sure the runtime is unpacked (fast after the first run) and show versions in Profile.
             if (components.value[ComponentId.EXTRACTOR] == ComponentState.Idle) app.components.testExtractor()
             loadHome()
         }
         viewModelScope.launch { app.settings.current().let { if (it.engine != EngineChoice.PHONE) app.components.testNodes(it.enabledNodes) } }
+    }
+
+    /** Coming back to the app: sync if it's been a minute. */
+    fun onForeground() {
+        val a = app.accounts.account.value
+        if (a.signedIn && System.currentTimeMillis() - a.lastSyncAt > 60_000 && settings.value?.onboarded == true) viewModelScope.launch { app.sync.sync() }
+    }
+
+    // ---------------- account & sync ----------------
+    val account = app.accounts.account
+    val syncState = app.sync.state
+    private val _auth = MutableStateFlow(AuthUi())
+    val auth = _auth.asStateFlow()
+    fun openAuth(signUp: Boolean) { _auth.value = AuthUi(open = true, signUp = signUp) }
+    fun closeAuth() { if (!_auth.value.busy) _auth.value = AuthUi() }
+    fun switchAuth() = _auth.update { it.copy(signUp = !it.signUp, error = null) }
+    fun submitAuth(server: String, email: String, password: String, name: String) {
+        if (_auth.value.busy) return
+        _auth.update { it.copy(busy = true, error = null) }
+        viewModelScope.launch {
+            try {
+                app.sync.setServer(normalizeServer(server))
+                if (_auth.value.signUp) app.sync.signUp(email, password, name.ifBlank { settings.value?.name.orEmpty() }) else app.sync.signIn(email, password)
+                _auth.value = AuthUi()
+                loadHome(refresh = true)
+            } catch (e: CancellationException) { throw e } catch (e: Exception) {
+                _auth.update { it.copy(busy = false, error = e.message ?: "Couldn't reach the server") }
+            }
+        }
+    }
+    fun syncNow() = viewModelScope.launch { app.sync.sync() }
+    fun signOut() = viewModelScope.launch { app.sync.signOut() }
+    fun deleteAccount() = viewModelScope.launch { runCatching { app.sync.deleteAccount() } }
+    fun setShareCache(on: Boolean) = app.sync.setShareCache(on)
+
+    // ---------------- song menu ----------------
+    fun playNext(t: Track) = if (settings.value?.allowAllSongs == true) app.player.playNext(t) else play(listOf(t), 0)
+    fun addToQueue(t: Track) = if (settings.value?.allowAllSongs == true) app.player.addToQueue(t) else play(listOf(t), 0)
+    /** A queue of this song and the ones like it. */
+    fun startRadio(t: Track) = viewModelScope.launch {
+        val more = runCatching { app.recommender.fromSeeds(listOf(t), _taste.value, 25, emptyList()) }.getOrDefault(emptyList())
+        play(listOf(t) + more, 0)
+    }
+    fun toggleFollow(name: String, artist: Artist? = null) = app.library.toggleFollow(ArtistRef(cleanArtist(name), artist?.pictureUrl, artist?.deezerId))
+    fun toggleExcluded(t: Track) = app.library.toggleExcluded(t)
+
+    // ---------------- artists & albums ----------------
+    private val _discovery = MutableStateFlow(Discovery())
+    val discovery = _discovery.asStateFlow()
+    private val _artistPages = MutableStateFlow<Map<String, ArtistPageState>>(emptyMap())
+    val artistPages = _artistPages.asStateFlow()
+    private val _albumPages = MutableStateFlow<Map<Long, AlbumPageState>>(emptyMap())
+    val albumPages = _albumPages.asStateFlow()
+
+    private fun loadDiscovery(refresh: Boolean) = viewModelScope.launch {
+        val cached = app.cache.get("home", "discovery", Discovery.serializer(), DISCOVERY_TTL)
+        if (cached != null) { _discovery.value = cached.value; if (cached.fresh && !refresh) return@launch }
+        val d = runCatching { app.artists.discover(library.value, _taste.value) }.getOrNull() ?: return@launch
+        if (d.artists.isNotEmpty()) { _discovery.value = d; app.cache.put("home", "discovery", Discovery.serializer(), d) }
+    }
+
+    fun openArtist(name: String, known: Artist? = null) {
+        val key = Taste.artistKey(cleanArtist(name))
+        if (_artistPages.value[key]?.let { !it.loading && it.error == null } == true) return
+        _artistPages.update { it + (key to ArtistPageState(known ?: Artist(cleanArtist(name)))) }
+        viewModelScope.launch {
+            val found = known?.takeIf { it.deezerId != null } ?: runCatching { app.artists.findArtist(name) }.getOrNull()
+            val a = found ?: known ?: Artist(cleanArtist(name))
+            val top = runCatching { app.artists.topTracks(a) }.getOrDefault(emptyList())
+                .ifEmpty { runCatching { app.engines.search(a.name, 15).filter { Taste.artistKeys(it.artist).any { k -> k == key } }.ifEmpty { app.engines.search(a.name, 10) } }.getOrDefault(emptyList()) }
+            val albums = runCatching { app.artists.albums(a) }.getOrDefault(emptyList())
+            val related = runCatching { app.artists.related(a) }.getOrDefault(emptyList())
+            _artistPages.update { it + (key to ArtistPageState(a, loading = false, top = top, albums = albums, related = related, error = if (top.isEmpty()) "Couldn't load this artist right now" else null)) }
+        }
+    }
+    fun artistPage(name: String) = _artistPages.value[Taste.artistKey(cleanArtist(name))]
+
+    fun openAlbum(album: Album) {
+        if (_albumPages.value[album.deezerId]?.tracks?.isNotEmpty() == true) return
+        _albumPages.update { it + (album.deezerId to AlbumPageState(album)) }
+        viewModelScope.launch {
+            val r = runCatching { app.artists.albumTracks(album) }
+            _albumPages.update { it + (album.deezerId to AlbumPageState(album, loading = false, tracks = r.getOrDefault(emptyList()), error = r.exceptionOrNull()?.let { "Couldn't load this album" })) }
+        }
+    }
+
+    // ---------------- lyrics ----------------
+    private val _lyrics = MutableStateFlow(LyricsUi())
+    val lyrics = _lyrics.asStateFlow()
+    fun toggleLyrics() {
+        val on = !_lyrics.value.showing
+        _lyrics.update { it.copy(showing = on) }
+        if (on) player.value.current?.let { loadLyrics(it) }
+    }
+    private var lyricsJob: Job? = null
+    private fun loadLyrics(t: Track) {
+        lyricsJob?.cancel()
+        _lyrics.update { it.copy(loading = true, lyrics = null, error = null) }
+        lyricsJob = viewModelScope.launch {
+            val r = runCatching { app.lyrics.get(t) }
+            if (player.value.current?.id == t.id) _lyrics.update { it.copy(loading = false, lyrics = r.getOrNull(), error = r.exceptionOrNull()?.let { "Couldn't load lyrics" }) }
+        }
     }
 
     // ---------------- onboarding ----------------
@@ -142,6 +265,7 @@ class AppViewModel(private val app: RiftSoloApp) : ViewModel() {
      * at a time. Refresh reshuffles from cached songs instead of hitting the node again.
      */
     fun loadHome(refresh: Boolean = false) {
+        loadDiscovery(refresh)
         homeJob?.cancel()
         homeJob = viewModelScope.launch {
             val cached = app.cache.get("home", "rows", HOME_ROWS, HOME_TTL)
@@ -281,6 +405,11 @@ class AppViewModel(private val app: RiftSoloApp) : ViewModel() {
         /** Gap between home-row searches for the same reason. */
         const val HOME_ROW_GAP_MS = 1200L
         const val HOME_TTL = 6 * Cache.HOUR
+        const val DISCOVERY_TTL = 12 * Cache.HOUR
+        const val AUTO_SYNC_DELAY_MS = 20_000L
+        fun cleanArtist(a: String) = a.replace(Regex("\\s*-\\s*Topic$", RegexOption.IGNORE_CASE), "").trim()
+        /** "rift.example.com" → "https://rift.example.com". */
+        fun normalizeServer(s: String): String { val t = s.trim().trimEnd('/'); return if (t.startsWith("http://") || t.startsWith("https://")) t else "https://$t" }
         private val HOME_ROWS = ListSerializer(HomeRow.serializer())
 
         val Factory: ViewModelProvider.Factory = viewModelFactory {
@@ -298,6 +427,8 @@ sealed interface ImportState {
     data class Done(val playlistId: String, val name: String, val count: Int) : ImportState
     data class Failed(val message: String) : ImportState
 }
+
+data class AuthUi(val open: Boolean = false, val signUp: Boolean = true, val busy: Boolean = false, val error: String? = null)
 
 data class SystemState(val batteryUnrestricted: Boolean = true, val notificationsAllowed: Boolean = true)
 

@@ -1,6 +1,9 @@
 package com.nopethedev.riftsolo.core.data
 
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -21,6 +24,17 @@ import java.security.MessageDigest
  * Not cacheDir on purpose: Android empties that whenever it likes, and these are worth keeping.
  */
 class Cache(root: File, private val clock: () -> Long = System::currentTimeMillis) {
+    /**
+     * Optional second level shared between users (Rift Server's anonymous cache): asked when nothing fresh is stored
+     * here, and handed what this device fetched. Only for [SHARED] namespaces; null or opted out = off.
+     */
+    interface Remote {
+        suspend fun get(ns: String, key: String): Pair<JsonElement, Long>?
+        suspend fun put(ns: String, key: String, value: JsonElement, expiresAt: Long)
+    }
+    @Volatile var remote: Remote? = null
+    private val bg = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
     private val dir = File(root, "cache").apply { mkdirs() }
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
     private val memory = object : LinkedHashMap<String, Stored>(256, 0.75f, true) {
@@ -53,8 +67,10 @@ class Cache(root: File, private val clock: () -> Long = System::currentTimeMilli
         Hit(value, age, age < maxAgeMs && (st.expiresAt == 0L || now < st.expiresAt))
     }
 
-    suspend fun <T> put(ns: String, key: String, s: KSerializer<T>, value: T, expiresAt: Long = 0) = withContext(Dispatchers.IO) {
+    suspend fun <T> put(ns: String, key: String, s: KSerializer<T>, value: T, expiresAt: Long = 0, share: Boolean = true) = withContext(Dispatchers.IO) {
         val st = Stored(clock(), expiresAt, json.encodeToJsonElement(s, value))
+        val r = remote
+        if (share && r != null && ns in SHARED) bg.launch { runCatching { r.put(ns, key, st.value, expiresAt) } }
         synchronized(memory) { memory["$ns/$key"] = st }
         runCatching {
             val f = file(ns, key)
@@ -64,6 +80,22 @@ class Cache(root: File, private val clock: () -> Long = System::currentTimeMilli
             tmp.renameTo(f)
         }
         Unit
+    }
+
+    /** Fresh local copy, else the shared cache's (stored locally for next time), else null. */
+    suspend fun <T> getShared(ns: String, key: String, s: KSerializer<T>, maxAgeMs: Long): T? {
+        get(ns, key, s, maxAgeMs)?.takeIf { it.fresh }?.let { return it.value }
+        return fromRemote(ns, key, s)
+    }
+
+    private suspend fun <T> fromRemote(ns: String, key: String, s: KSerializer<T>): T? {
+        val r = remote ?: return null
+        if (ns !in SHARED) return null
+        val (el, exp) = runCatching { r.get(ns, key) }.getOrNull() ?: return null
+        if (exp in 1..clock()) return null
+        val v = runCatching { json.decodeFromJsonElement(s, el) }.getOrNull() ?: return null
+        put(ns, key, s, v, exp, share = false)
+        return v
     }
 
     suspend fun remove(ns: String, key: String) = withContext(Dispatchers.IO) {
@@ -90,6 +122,7 @@ class Cache(root: File, private val clock: () -> Long = System::currentTimeMilli
         @Suppress("UNCHECKED_CAST")
         if (!owner) return deferred.await() as T
         try {
+            if (!force) fromRemote(ns, key, s)?.let { deferred.complete(it); return it }
             val v = load()
             put(ns, key, s, v, expiresAt(v))
             deferred.complete(v)
@@ -124,6 +157,8 @@ class Cache(root: File, private val clock: () -> Long = System::currentTimeMilli
         const val STALE_MS = 30 * DAY
         const val PRUNE_MS = 45 * DAY
         private const val MEMORY_ENTRIES = 300
+        /** What may go to the shared cache: public catalogue data, never anything about the user. */
+        val SHARED = setOf("search", "related", "spotify", "mirror", "stream", "ytvideos", "lyrics", "artist")
 
         /** Cache keys: lower-case, single spaces, so "Daft  Punk" and "daft punk" share an entry. */
         fun norm(text: String) = text.trim().lowercase().replace(Regex("\\s+"), " ")

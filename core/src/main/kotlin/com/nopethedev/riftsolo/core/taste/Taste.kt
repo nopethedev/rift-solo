@@ -29,6 +29,8 @@ data class TasteProfile(
     /** Seeds for recommendations: their best-liked songs, best first. */
     val seeds: List<Track> = emptyList(),
     val signals: Int = 0,
+    /** Songs the user excluded from their taste: never recommended (their song keys, so re-uploads count too). */
+    val excluded: Set<String> = emptySet(),
 ) {
     val topArtists: List<Pair<String, Double>> get() = artists.entries.filter { it.value > 0 }.sortedByDescending { it.value }.map { it.key to it.value }
     val topGenres: List<Pair<String, Double>> get() = genres.entries.sortedByDescending { it.value }.map { it.key to it.value }
@@ -44,6 +46,8 @@ object Taste {
     const val W_PLAY = 1.0
     const val W_COMPLETE = 1.5
     const val W_SKIP = -2.0
+    /** Following an artist: worth a couple of liked songs, and it doesn't fade. */
+    const val W_FOLLOW = 8.0
 
     private val STOP = setOf(
         "the", "a", "an", "and", "of", "to", "in", "on", "for", "with", "by", "my", "your", "you", "me", "is", "it", "feat", "ft",
@@ -104,7 +108,9 @@ object Taste {
         val byId = HashMap<String, Track>()
         var signals = 0
 
+        val excludedIds = library.excluded.map { it.id }.toSet()
         fun signal(t: Track, w: Double) {
+            if (t.id in excludedIds) return
             byId.putIfAbsent(t.id, t)
             trackScore.merge(t.id, w, Double::plus)
             artistKeys(t.artist).forEachIndexed { i, a -> artists.merge(a, if (i == 0) w else w * 0.5, Double::plus) }
@@ -125,6 +131,8 @@ object Taste {
         // Songs that fell out of "recent" still count through their stats.
         stats.forEach { (id, s) -> if (library.recent.none { it.id == id } && s.track != null) signal(s.track, statWeight(s, now)) }
 
+        library.followed.forEach { a -> artistKeys(a.name).firstOrNull()?.let { artists.merge(it, W_FOLLOW, Double::plus); signals++ } }
+
         // Genres picked in onboarding are a prior that fades as real listening takes over.
         val maxG = genres.values.maxOrNull() ?: 0.0
         val prior = max(3.0, maxG * 0.6)
@@ -138,6 +146,7 @@ object Taste {
         return TasteProfile(
             artists = artists, terms = terms, genres = genres.mapValues { min(1.0, it.value / gMax) }, tracks = trackScore,
             skipped = skipped, recentlyPlayed = stats.filter { it.value.lastAt > recentCut }.keys, seeds = seeds, signals = signals,
+            excluded = library.excluded.map(::songKey).toSet(),
         )
     }
 
@@ -184,7 +193,7 @@ object Taste {
         for (c in candidates) {
             if (c.track.id in exclude) continue
             val k = songKey(c.track)
-            if (k in excludeSongs) continue
+            if (k in excludeSongs || k in p.excluded) continue
             val title = k.substringBefore('|')
             if (titles.any { title.contains(it) }) continue
             val prev = best[k]

@@ -6,8 +6,8 @@ dependencyResolutionManagement {
     repositories {
         google(); maven("https://repo1.maven.org/maven2"); mavenCentral()
         // NewPipe Extractor (audio extraction on the phone) is only published on JitPack.
-        maven("https://jitpack.io") { content { includeGroupByRegex("com\\.github\\.TeamNewPipe.*") } }
+        maven("https://jitpack.io") { content { includeGroupByRegex("com\\.github\\.(TeamNewPipe|QWEA0).*") } }
     }
 }
 rootProject.name = "RiftSolo"
-include(":app")
+include(":core", ":app", ":desktop")

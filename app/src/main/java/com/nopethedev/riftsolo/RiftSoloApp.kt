@@ -14,6 +14,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import com.nopethedev.riftsolo.core.data.Cache
+import com.nopethedev.riftsolo.core.lyrics.LyricsService
+import com.nopethedev.riftsolo.core.sync.AccountStore
+import com.nopethedev.riftsolo.core.sync.RiftServer
+import com.nopethedev.riftsolo.core.sync.ServerCache
+import com.nopethedev.riftsolo.core.sync.SyncManager
+import com.nopethedev.riftsolo.core.taste.ArtistGraph
 import com.nopethedev.riftsolo.core.taste.Recommender
 import com.nopethedev.riftsolo.core.taste.Taste
 import com.nopethedev.riftsolo.core.taste.TasteProfile
@@ -22,9 +28,14 @@ import com.nopethedev.riftsolo.core.taste.TasteProfile
 class RiftSoloApp : Application() {
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     val settings by lazy { SettingsStore(this) }
-    val library by lazy { LibraryStore(this, scope) }
+    val library by lazy { LibraryStore(filesDir, scope) }
     val phone by lazy { NewPipeEngine({ settings.current().providers.mapNotNull(SourceProvider::of) }) }
-    val cache by lazy { Cache(filesDir).also { c -> scope.launch { c.prune() } } }
+    val accounts by lazy { AccountStore(filesDir) }
+    val server by lazy { RiftServer({ accounts.account.value.serverUrl }) }
+    val cache by lazy { Cache(filesDir).also { c -> c.remote = ServerCache(server, accounts); scope.launch { c.prune() } } }
+    val sync by lazy { SyncManager(accounts, library, server, device = "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}".trim()) }
+    val lyrics by lazy { LyricsService(lavalink, cache) }
+    val artists by lazy { ArtistGraph(engines, cache) }
     val lavalink by lazy { LavalinkEngine({ settings.current().enabledNodes }, cache) }
     val engines by lazy { EngineHub({ settings.current().engineConfig }, phone, lavalink, cache) }
     val components by lazy { Components(phone, lavalink) }

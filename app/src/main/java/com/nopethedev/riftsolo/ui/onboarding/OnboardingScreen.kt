@@ -418,7 +418,8 @@ fun ComponentRow(id: ComponentId, s: ComponentState, trailing: @Composable (() -
         }
         if (s is ComponentState.Working) {
             Spacer(Modifier.height(12.dp))
-            if (s.progress != null) LinearProgressIndicator(progress = { s.progress }, Modifier.fillMaxWidth().clip(CircleShape))
+            val p = s.progress
+            if (p != null) LinearProgressIndicator(progress = { p }, Modifier.fillMaxWidth().clip(CircleShape))
             else if (androidx.compose.ui.platform.LocalInspectionMode.current) LinearProgressIndicator(progress = { 0.4f }, Modifier.fillMaxWidth().clip(CircleShape)) else LinearProgressIndicator(Modifier.fillMaxWidth().clip(CircleShape))
         }
     }

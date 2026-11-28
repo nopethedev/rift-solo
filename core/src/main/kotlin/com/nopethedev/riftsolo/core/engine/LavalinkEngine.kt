@@ -158,6 +158,42 @@ class LavalinkEngine(
             .take(limit)
     }
 
+    /**
+     * Lyrics from the first node with a lyrics plugin, as the plugin's raw JSON (parsed by Lyrics.parseLavalink), or null.
+     * LavaLyrics (with LavaSrc / youtube-source providers) needs the track loaded first to get its encoded form;
+     * DuncteBot's java-lyrics-plugin takes a YouTube video id or a search.
+     */
+    suspend fun lyricsRaw(track: Track): String? {
+        for (cfg in ordered(nodes())) {
+            val plugins = runCatching { info(cfg).plugins.map { it.lowercase() } }.getOrNull() ?: continue
+            try {
+                if (plugins.any { "lavalyrics" in it }) {
+                    val enc = JSONObject(get(cfg, "v4/loadtracks", mapOf("identifier" to track.url))).let { j ->
+                        when (j.optString("loadType")) {
+                            "track" -> j.optJSONObject("data")?.optString("encoded")
+                            "search" -> j.optJSONArray("data")?.optJSONObject(0)?.optString("encoded")
+                            else -> null
+                        }
+                    }?.takeIf { it.isNotBlank() } ?: continue
+                    val body = lyricsGet(cfg, "v4/lyrics", mapOf("track" to enc, "skipTrackSource" to "false"))
+                    if (body != null) return body
+                }
+                if (plugins.any { "java-lyrics" in it || it == "lyrics" }) {
+                    val vid = NewPipeEngine.youtubeId(track.url)
+                    val body = if (vid != null) lyricsGet(cfg, "v4/lyrics/$vid", emptyMap())
+                    else lyricsGet(cfg, "v4/lyrics/search", mapOf("query" to "${track.artist} ${track.title}", "source" to "youtube"))
+                    if (body != null) return body
+                }
+            } catch (e: EngineException) { if (e.code == EngineException.Code.UNAVAILABLE) continue }
+        }
+        return null
+    }
+
+    /** Lyrics endpoints answer 404 / 204 / an empty body when a song has none. */
+    private suspend fun lyricsGet(cfg: LavalinkNodeConfig, path: String, q: Map<String, String>): String? = try {
+        get(cfg, path, q).takeIf { it.isNotBlank() && it != "null" }
+    } catch (e: EngineException) { if (e.code == EngineException.Code.FAILED) null else throw e }
+
     override suspend fun open(track: Track): PlayableStream =
         throw EngineException("Lavalink tracks are played through the extractor on this device", EngineException.Code.UNAVAILABLE)
 

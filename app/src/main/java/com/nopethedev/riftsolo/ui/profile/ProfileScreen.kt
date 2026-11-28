@@ -17,6 +17,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.AccountCircle
+import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.CloudSync
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Info
@@ -77,11 +79,13 @@ data class ProfileState(
     val nodeStatus: Map<String, NodeStatus> = emptyMap(),
     val components: Map<ComponentId, ComponentState> = emptyMap(),
     val allowAllSongs: Boolean = false,
-    val version: String = "0.3.0",
+    val version: String = "0.4.0",
     val taste: TasteProfile = TasteProfile(),
     val batteryUnrestricted: Boolean = true,
     val notificationsAllowed: Boolean = true,
     val cacheBytes: Long = -1,
+    val account: AccountUi = AccountUi(),
+    val liquidGlass: Boolean = false,
 )
 
 class ProfileActions(
@@ -94,6 +98,8 @@ class ProfileActions(
     val fixBattery: () -> Unit = {},
     val allowNotifications: () -> Unit = {},
     val clearCache: () -> Unit = {},
+    val account: AccountActions = AccountActions(),
+    val liquidGlass: (Boolean) -> Unit = {},
 )
 
 @Composable
@@ -120,7 +126,21 @@ fun ProfileScreen(state: ProfileState, actions: ProfileActions, contentPadding: 
                 OutlinedButton(actions.editProfile, shape = RoundedCornerShape(50)) { Icon(Icons.Rounded.Edit, null, Modifier.size(16.dp)); Spacer(Modifier.width(6.dp)); Text("Edit profile") }
             }
         }
+        item {
+            Header(Icons.Rounded.AccountCircle, "Account")
+            AccountCard(state.account, actions.account, Modifier.padding(horizontal = 16.dp))
+        }
         item { TasteSection(state.taste) }
+        item {
+            Header(Icons.Rounded.AutoAwesome, "Appearance")
+            Row(Modifier.padding(horizontal = 16.dp).fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Liquid glass")
+                    Text("Glass navigation bar that bends what scrolls under it. Best on Android 13+; uses a little more battery.", style = MaterialTheme.typography.bodySmall, color = Rift.Muted)
+                }
+                Switch(state.liquidGlass, actions.liquidGlass, colors = SwitchDefaults.colors(checkedTrackColor = Rift.Accent))
+            }
+        }
         item {
             Header(Icons.Rounded.BatteryChargingFull, "Background playback")
             Column(Modifier.padding(horizontal = 16.dp)) {

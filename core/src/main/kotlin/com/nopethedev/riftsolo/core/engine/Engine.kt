@@ -96,7 +96,7 @@ class EngineHub(
         if (!mirrored) {
             try { return openAndKeep(track, track) } catch (e: EngineException) { last = e; tried += track.url }
         } else {
-            cache?.get("mirror", track.url, Track.serializer(), MIRROR_TTL)?.value?.let { m ->
+            cache?.getShared("mirror", track.url, Track.serializer(), MIRROR_TTL)?.let { m ->
                 if (!fresh) cachedStream(m.url)?.let { return it }
                 try { return openAndKeep(m, track) } catch (e: EngineException) { last = e; tried += m.url }
             }
@@ -135,7 +135,7 @@ class EngineHub(
     }
 
     private suspend fun cachedStream(url: String): PlayableStream? =
-        cache?.get("stream", url, PlayableStream.serializer(), STREAM_TTL)?.takeIf { it.fresh }?.value
+        cache?.getShared("stream", url, PlayableStream.serializer(), STREAM_TTL)
 
     /** The player calls this when a cached stream fails, so the next try extracts again. */
     suspend fun forgetStream(track: Track) {

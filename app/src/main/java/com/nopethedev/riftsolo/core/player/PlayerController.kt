@@ -177,5 +177,18 @@ class PlayerController(
         load(s.queue[s.index - 1], 0)
     }
 
+    /** Song menu: right after the current song. */
+    fun playNext(t: Track) {
+        val s = _state.value
+        if (s.current == null) { play(listOf(t), 0); return }
+        _state.update { st -> st.copy(queue = st.queue.toMutableList().apply { add((st.index + 1).coerceAtMost(size), t) }) }
+    }
+
+    /** Song menu: at the end of the queue. */
+    fun addToQueue(t: Track) {
+        if (_state.value.current == null) { play(listOf(t), 0); return }
+        _state.update { it.copy(queue = it.queue + t) }
+    }
+
     fun dismissError() = _state.update { it.copy(error = null) }
 }

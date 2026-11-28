@@ -9,6 +9,9 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -115,8 +118,12 @@ fun TrackRow(
     index: Int? = null,
     trailing: (@Composable () -> Unit)? = null,
 ) {
+    val menu = LocalTrackMenu.current
+    val haptic = LocalHapticFeedback.current
     Row(
-        modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 8.dp),
+        modifier.fillMaxWidth()
+            .combinedClickable(onClick = onClick, onLongClick = menu?.let { m -> { haptic.performHapticFeedback(HapticFeedbackType.LongPress); m(track) } }, onLongClickLabel = "Song options")
+            .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (index != null) Text("$index", Modifier.width(28.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
@@ -153,8 +160,10 @@ fun SourceBadge(source: String) {
 
 /** Big square card for home rows. */
 @Composable
-fun CoverCard(title: String, subtitle: String, seed: String, artworkUrl: String?, onClick: () -> Unit, modifier: Modifier = Modifier, size: Dp = 148.dp, circle: Boolean = false) {
-    Column(modifier.width(size).clip(RoundedCornerShape(8.dp)).clickable(onClick = onClick)) {
+fun CoverCard(title: String, subtitle: String, seed: String, artworkUrl: String?, onClick: () -> Unit, modifier: Modifier = Modifier, size: Dp = 148.dp, circle: Boolean = false, track: Track? = null) {
+    val menu = LocalTrackMenu.current
+    val haptic = LocalHapticFeedback.current
+    Column(modifier.width(size).clip(RoundedCornerShape(8.dp)).combinedClickable(onClick = onClick, onLongClick = if (track != null && menu != null) ({ haptic.performHapticFeedback(HapticFeedbackType.LongPress); menu(track) }) else null)) {
         Artwork(artworkUrl, seed, size, corner = if (circle) size / 2 else 8.dp)
         Spacer(Modifier.height(8.dp))
         Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleSmall)

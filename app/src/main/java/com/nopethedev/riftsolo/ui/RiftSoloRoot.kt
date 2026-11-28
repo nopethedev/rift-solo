@@ -1,6 +1,27 @@
 package com.nopethedev.riftsolo.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.material3.NavigationBarDefaults
+import com.nopethedev.riftsolo.ui.components.Glass
+import com.nopethedev.riftsolo.ui.components.GlassPanel
+import com.nopethedev.riftsolo.core.sync.SyncManager
+import com.nopethedev.riftsolo.core.taste.Taste
+import com.nopethedev.riftsolo.ui.artist.AlbumPageState
+import com.nopethedev.riftsolo.ui.artist.AlbumScreen
+import com.nopethedev.riftsolo.ui.artist.ArtistPageActions
+import com.nopethedev.riftsolo.ui.artist.ArtistPageState
+import com.nopethedev.riftsolo.ui.artist.ArtistScreen
+import com.nopethedev.riftsolo.ui.components.LocalPlaylistContext
+import com.nopethedev.riftsolo.ui.components.LocalTrackMenu
+import com.nopethedev.riftsolo.ui.components.TrackMenuActions
+import com.nopethedev.riftsolo.ui.components.TrackMenuSheet
+import com.nopethedev.riftsolo.ui.components.TrackMenuState
+import com.nopethedev.riftsolo.ui.player.LyricsUi
+import com.nopethedev.riftsolo.ui.profile.AccountActions
+import com.nopethedev.riftsolo.ui.profile.AccountUi
+import com.nopethedev.riftsolo.ui.profile.AuthDialog
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
@@ -106,6 +127,7 @@ fun RiftSoloRoot(vm: AppViewModel) {
     val system by vm.system.collectAsStateWithLifecycle()
     val context = LocalContext.current
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { vm.refreshSystem() }
+    LifecycleEventEffect(Lifecycle.Event.ON_START) { vm.onForeground() }
     // Battery dialog / notification prompt: re-read the real state when they close.
     val batteryLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { vm.refreshSystem() }
     val notifLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { vm.refreshSystem() }
@@ -156,6 +178,19 @@ fun RiftSoloRoot(vm: AppViewModel) {
     val taste by vm.taste.collectAsStateWithLifecycle()
     val importState by vm.import.collectAsStateWithLifecycle()
     val cacheBytes by vm.cacheBytes.collectAsStateWithLifecycle()
+    val account by vm.account.collectAsStateWithLifecycle()
+    val syncState by vm.syncState.collectAsStateWithLifecycle()
+    val auth by vm.auth.collectAsStateWithLifecycle()
+    val discovery by vm.discovery.collectAsStateWithLifecycle()
+    val artistPages by vm.artistPages.collectAsStateWithLifecycle()
+    val albumPages by vm.albumPages.collectAsStateWithLifecycle()
+    val lyrics by vm.lyrics.collectAsStateWithLifecycle()
+    var menuFor by remember { mutableStateOf<Track?>(null) }
+    var confirmDelete by remember { mutableStateOf(false) }
+    /** Artist / album pages opened on top of the current tab, newest last. */
+    var pages by remember { mutableStateOf(listOf<Page>()) }
+    val openArtist = { name: String, a: com.nopethedev.riftsolo.core.taste.Artist? -> vm.openArtist(name, a); pages = pages + Page.ArtistP(AppViewModel.cleanArtist(name)) }
+    val openAlbum = { a: com.nopethedev.riftsolo.core.taste.Album -> vm.openAlbum(a); pages = pages + Page.AlbumP(a) }
     var addingTo by remember { mutableStateOf<String?>(null) }
     var importing by remember { mutableStateOf(false) }
     var renaming by remember { mutableStateOf<String?>(null) }
@@ -169,16 +204,31 @@ fun RiftSoloRoot(vm: AppViewModel) {
     var editProfile by remember { mutableStateOf(false) }
     val likedIds = library.liked.map { it.id }.toSet()
 
-    BackHandler(collection != null && !nowPlaying) { collection = null }
+    BackHandler(pages.isNotEmpty() && !nowPlaying) { pages = pages.dropLast(1) }
+    BackHandler(collection != null && pages.isEmpty() && !nowPlaying) { collection = null }
     BackHandler(tab != Tab.HOME && collection == null && !nowPlaying) { tab = Tab.HOME }
 
+    CompositionLocalProvider(LocalTrackMenu provides { t: Track -> menuFor = t }) {
     MainScaffold(
-        tab = tab, onTab = { tab = it; collection = null }, player = player, liked = player.current?.id in likedIds,
-        playerActions = PlayerActions(toggle = vm::toggle, next = vm::next, previous = vm::previous, seek = vm::seek, like = { player.current?.let(vm::like) }, open = { nowPlaying = true }, close = { nowPlaying = false }),
-        nowPlaying = nowPlaying,
+        tab = tab, onTab = { tab = it; collection = null; pages = emptyList() }, player = player, liked = player.current?.id in likedIds,
+        playerActions = PlayerActions(toggle = vm::toggle, next = vm::next, previous = vm::previous, seek = vm::seek, like = { player.current?.let(vm::like) }, open = { nowPlaying = true }, close = { nowPlaying = false },
+            lyrics = vm::toggleLyrics, more = { menuFor = player.current }),
+        nowPlaying = nowPlaying, lyrics = lyrics, glass = s.liquidGlass,
     ) { pad ->
         val c = collection
-        if (c != null) {
+        val page = pages.lastOrNull()
+        if (page != null) {
+            val pageActions = ArtistPageActions(back = { pages = pages.dropLast(1) }, play = vm::play, like = vm::like, openAlbum = openAlbum, openArtist = { a -> openArtist(a.name, a) },
+                follow = { (page as? Page.ArtistP)?.let { p -> vm.toggleFollow(p.name, artistPages[Taste.artistKey(p.name)]?.artist) } })
+            when (page) {
+                is Page.ArtistP -> {
+                    val st = (artistPages[Taste.artistKey(page.name)] ?: ArtistPageState(com.nopethedev.riftsolo.core.taste.Artist(page.name)))
+                    ArtistScreen(st.copy(following = library.followed.any { it.key == page.name.trim().lowercase() }), pageActions, player.current?.id, likedIds, pad)
+                }
+                is Page.AlbumP -> AlbumScreen(albumPages[page.album.deezerId] ?: AlbumPageState(page.album), pageActions, player.current?.id, likedIds, pad,
+                    onArtist = { openArtist(page.album.artist, null) })
+            }
+        } else if (c != null) {
             val playlist = (c as? Collection.Of)?.let { o -> library.playlists.firstOrNull { it.id == o.playlistId } }
             val (title, tracks, brush) = when (c) {
                 Collection.Liked -> Triple("Liked Songs", library.liked, Brush.linearGradient(listOf(Color(0xFF4F46E5), Color(0xFFA78BFA))))
@@ -199,17 +249,20 @@ fun RiftSoloRoot(vm: AppViewModel) {
                 onRecRefresh = { recKey?.let { vm.loadRecs(it, tracks, refresh = true) } },
                 onRecsShown = { recKey?.let { vm.loadRecs(it, tracks) } },
             )
+            CompositionLocalProvider(LocalPlaylistContext provides playlist?.id) {
             CollectionScreen(title, "${if (playlist?.importedFrom != null) "Imported from Spotify" else s.name.ifBlank { "You" }} · ${tracks.size} songs", tracks, brush, player.current?.id, likedIds,
                 onBack = { collection = null }, onPlay = { vm.play(tracks, it) }, onShuffle = { vm.play(tracks.shuffled(), 0) }, onLike = vm::like, contentPadding = pad, extras = extras)
+            }
         } else when (tab) {
             Tab.HOME -> HomeScreen(
-                HomeState(s.name, s.avatar, greetingFor(Calendar.getInstance().get(Calendar.HOUR_OF_DAY)), library.liked.size, library.recent, homeRows),
-                HomeActions(play = vm::play, openLiked = { collection = Collection.Liked }, openRecent = { collection = Collection.Recent }, openProfile = { tab = Tab.PROFILE }, refresh = { vm.loadHome(refresh = true) }),
+                HomeState(s.name, s.avatar, greetingFor(Calendar.getInstance().get(Calendar.HOUR_OF_DAY)), library.liked.size, library.recent, homeRows, discovery.artists, discovery.albums),
+                HomeActions(play = vm::play, openLiked = { collection = Collection.Liked }, openRecent = { collection = Collection.Recent }, openProfile = { tab = Tab.PROFILE }, refresh = { vm.loadHome(refresh = true) },
+                    openArtist = { a -> openArtist(a.name, a) }, openAlbum = openAlbum),
                 pad,
             )
             Tab.SEARCH -> SearchScreen(
                 search.copy(playingId = player.current?.id, likedIds = likedIds),
-                SearchActions(submit = vm::submitSearch, query = vm::setQuery, filter = vm::setSearchFilter, play = vm::play, like = vm::like, more = { addTarget = it }, browse = { vm.browse(it.query) }),
+                SearchActions(submit = vm::submitSearch, query = vm::setQuery, filter = vm::setSearchFilter, play = vm::play, like = vm::like, more = { menuFor = it }, browse = { vm.browse(it.query) }),
                 pad,
             )
             Tab.LIBRARY -> LibraryScreen(
@@ -218,7 +271,9 @@ fun RiftSoloRoot(vm: AppViewModel) {
                 pad,
             )
             Tab.PROFILE -> ProfileScreen(
-                profileState(s, library, components, nodeStatus).copy(taste = taste, batteryUnrestricted = system.batteryUnrestricted, notificationsAllowed = system.notificationsAllowed, cacheBytes = cacheBytes).also { LaunchedEffect(Unit) { vm.refreshCacheSize() } },
+                profileState(s, library, components, nodeStatus).copy(taste = taste, batteryUnrestricted = system.batteryUnrestricted, notificationsAllowed = system.notificationsAllowed, cacheBytes = cacheBytes,
+                    account = AccountUi(account.serverUrl, account.email, account.name, syncState is SyncManager.State.Syncing, account.lastSyncAt, account.lastError, account.shareCache), liquidGlass = s.liquidGlass,
+                ).also { LaunchedEffect(Unit) { vm.refreshCacheSize() } },
                 ProfileActions(
                     engine = { e -> vm.updateSettings { it.copy(engine = e) } },
                     provider = { id, on -> vm.updateSettings { it.copy(providers = if (on) it.providers + id else it.providers - id) } },
@@ -230,12 +285,37 @@ fun RiftSoloRoot(vm: AppViewModel) {
                     testExtractor = { vm.testExtractor() },
                     allowAllSongs = { a -> vm.updateSettings { it.copy(allowAllSongs = a) } }, editProfile = { editProfile = true },
                     fixBattery = requestBattery, allowNotifications = requestNotifications, clearCache = { vm.clearCache() },
+                    account = AccountActions(signUp = { vm.openAuth(true) }, signIn = { vm.openAuth(false) }, signOut = { vm.signOut() }, sync = { vm.syncNow() }, deleteAccount = { confirmDelete = true }, shareCache = vm::setShareCache),
+                    liquidGlass = { on -> vm.updateSettings { it.copy(liquidGlass = on) } },
                 ),
                 pad,
             )
         }
     }
 
+    }
+
+    menuFor?.let { t ->
+        val inPlaylist = library.playlists.firstOrNull { p -> p.id == (collection as? Collection.Of)?.playlistId && pages.isEmpty() && p.tracks.any { it.id == t.id } }
+        TrackMenuSheet(
+            TrackMenuState(t, liked = t.id in likedIds, following = library.followed.any { it.key == AppViewModel.cleanArtist(t.artist).lowercase() }, excluded = library.excluded.any { it.id == t.id }, playlistName = inPlaylist?.name),
+            TrackMenuActions(
+                playNext = { vm.playNext(t) }, addToQueue = { vm.addToQueue(t) }, startRadio = { vm.startRadio(t) }, addToPlaylist = { addTarget = t }, like = { vm.like(t) },
+                goToArtist = { nowPlaying = false; openArtist(t.artist, null) }, follow = { vm.toggleFollow(t.artist) }, exclude = { vm.toggleExcluded(t) },
+                removeFromPlaylist = inPlaylist?.let { p -> { vm.removeFromPlaylist(p.id, t) } },
+                share = { runCatching { context.startActivity(android.content.Intent.createChooser(android.content.Intent(android.content.Intent.ACTION_SEND).setType("text/plain").putExtra(android.content.Intent.EXTRA_TEXT, "${t.title} · ${t.artist}\n${t.url}"), null)) } },
+            ),
+            onDismiss = { menuFor = null },
+        )
+    }
+    if (auth.open) AuthDialog(auth.signUp, account.serverUrl, auth.busy, auth.error, onSubmit = vm::submitAuth, onSwitch = vm::switchAuth, onDismiss = vm::closeAuth)
+    if (confirmDelete) AlertDialog(
+        onDismissRequest = { confirmDelete = false }, containerColor = Rift.Surface,
+        title = { Text("Delete your account?") },
+        text = { Text("Your account and everything synced to ${account.serverUrl.removePrefix("https://")} is deleted. This phone keeps its library.") },
+        confirmButton = { TextButton({ vm.deleteAccount(); confirmDelete = false }) { Text("Delete", color = Rift.Danger) } },
+        dismissButton = { TextButton({ confirmDelete = false }) { Text("Cancel") } },
+    )
     if (newPlaylist) {
         NameDialog("New playlist", "", "Create", onDismiss = { newPlaylist = false }) { name -> val id = vm.createPlaylist(name); addTarget?.let { vm.addToPlaylist(id, it) }; addTarget = null; newPlaylist = false }
     }
@@ -279,6 +359,7 @@ fun profileState(
 @Composable
 fun MainScaffold(
     tab: Tab, onTab: (Tab) -> Unit, player: PlayerState, liked: Boolean, playerActions: PlayerActions, nowPlaying: Boolean,
+    lyrics: LyricsUi = LyricsUi(), glass: Boolean = false,
     content: @Composable (PaddingValues) -> Unit,
 ) {
     Box(Modifier.fillMaxSize().background(Rift.Bg)) {
@@ -286,9 +367,8 @@ fun MainScaffold(
             containerColor = Rift.Bg,
             contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0),
             bottomBar = {
-                Column(Modifier.background(Brush.verticalGradient(listOf(Color.Transparent, Rift.Bg.copy(alpha = 0.97f), Rift.Bg), 0f, 120f))) {
-                    MiniPlayer(player, liked, playerActions, Modifier.padding(bottom = 4.dp))
-                    NavigationBar(containerColor = Color.Transparent, tonalElevation = 0.dp) {
+                val nav: @Composable (Boolean) -> Unit = { inGlass ->
+                    NavigationBar(containerColor = Color.Transparent, tonalElevation = 0.dp, windowInsets = if (inGlass) androidx.compose.foundation.layout.WindowInsets(0) else NavigationBarDefaults.windowInsets) {
                         Tab.entries.forEach { t ->
                             NavigationBarItem(
                                 selected = t == tab, onClick = { onTab(t) },
@@ -298,12 +378,31 @@ fun MainScaffold(
                         }
                     }
                 }
+                if (glass && Glass.supported) {
+                    // Floating glass pill; the lists keep scrolling underneath it.
+                    Column(Modifier.navigationBarsPadding().padding(horizontal = 12.dp, vertical = 8.dp)) {
+                        GlassPanel(28.dp, Modifier.fillMaxWidth()) {
+                            Column(Modifier.padding(top = 6.dp)) {
+                                MiniPlayer(player, liked, playerActions, Modifier.padding(bottom = 2.dp))
+                                nav(true)
+                            }
+                        }
+                    }
+                } else Column(Modifier.background(Brush.verticalGradient(listOf(Color.Transparent, Rift.Bg.copy(alpha = 0.97f), Rift.Bg), 0f, 120f))) {
+                    MiniPlayer(player, liked, playerActions, Modifier.padding(bottom = 4.dp))
+                    nav(false)
+                }
             },
         ) { pad -> content(pad) }
         AnimatedVisibility(nowPlaying && player.current != null, enter = slideInVertically { it }, exit = slideOutVertically { it }) {
-            NowPlayingScreen(player, liked, playerActions)
+            NowPlayingScreen(player, liked, playerActions, lyrics = lyrics)
         }
     }
+}
+
+sealed interface Page {
+    data class ArtistP(val name: String) : Page
+    data class AlbumP(val album: com.nopethedev.riftsolo.core.taste.Album) : Page
 }
 
 @Composable

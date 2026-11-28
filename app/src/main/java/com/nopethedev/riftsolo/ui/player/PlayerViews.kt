@@ -39,6 +39,13 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material.icons.rounded.Lyrics
+import com.nopethedev.riftsolo.core.lyrics.Lyrics
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -65,7 +72,42 @@ data class PlayerActions(
     val like: () -> Unit = {},
     val open: () -> Unit = {},
     val close: () -> Unit = {},
+    /** Show / hide lyrics on the now-playing screen. */
+    val lyrics: () -> Unit = {},
+    /** Song menu for the current song. */
+    val more: () -> Unit = {},
 )
+
+data class LyricsUi(val showing: Boolean = false, val loading: Boolean = false, val lyrics: Lyrics? = null, val error: String? = null)
+
+/** Lyrics in place of the cover. Synced lyrics follow the song (current line bright, the list scrolls with it); tap a line to jump there. */
+@Composable
+fun LyricsPanel(ui: LyricsUi, positionMs: Long, seek: (Long) -> Unit, modifier: Modifier = Modifier) {
+    val l = ui.lyrics
+    Box(modifier.clip(RoundedCornerShape(16.dp)).background(Color.Black.copy(alpha = 0.28f)), contentAlignment = Alignment.Center) {
+        when {
+            ui.loading && l == null -> Spinner(Modifier.size(32.dp))
+            l == null || !l.found -> Text(ui.error ?: "No lyrics found for this song", color = Color.White.copy(alpha = 0.7f), modifier = Modifier.padding(24.dp))
+            else -> {
+                val current = l.lineAt(positionMs)
+                val listState = rememberLazyListState()
+                LaunchedEffect(current) { if (current >= 0) listState.animateScrollToItem((current - 2).coerceAtLeast(0)) }
+                LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    itemsIndexed(l.lines) { i, line ->
+                        val past = l.synced && i < current
+                        Text(
+                            line.text.ifBlank { "♪" },
+                            style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold,
+                            color = when { !l.synced -> Color.White; i == current -> Color.White; past -> Color.White.copy(alpha = 0.45f); else -> Color.White.copy(alpha = 0.3f) },
+                            modifier = if (line.timeMs != null) Modifier.clickable { seek(line.timeMs!!) } else Modifier,
+                        )
+                    }
+                    item { Text(l.source, style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.45f), modifier = Modifier.padding(top = 12.dp)) }
+                }
+            }
+        }
+    }
+}
 
 private fun Long.clock() = (this / 1000).let { "%d:%02d".format(it / 60, it % 60) }
 
@@ -101,7 +143,7 @@ fun MiniPlayer(state: PlayerState, liked: Boolean, actions: PlayerActions, modif
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun NowPlayingScreen(state: PlayerState, liked: Boolean, actions: PlayerActions, modifier: Modifier = Modifier) {
+fun NowPlayingScreen(state: PlayerState, liked: Boolean, actions: PlayerActions, modifier: Modifier = Modifier, lyrics: LyricsUi = LyricsUi()) {
     val t = state.current ?: return
     var dragging by remember { mutableStateOf<Float?>(null) }
     Box(modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFF4C1D95), Color(0xFF1A1033), Rift.Bg)))) {
@@ -112,10 +154,11 @@ fun NowPlayingScreen(state: PlayerState, liked: Boolean, actions: PlayerActions,
                     Text("PLAYING VIA ${if (t.engine == "lavalink") "LAVALINK" else "THIS PHONE"}", style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.6f), letterSpacing = MaterialTheme.typography.labelSmall.letterSpacing * 1.5f)
                     Text(if (state.queue.size > 1) "Queue · ${state.index + 1} of ${state.queue.size}" else "Single", style = MaterialTheme.typography.titleSmall)
                 }
-                IconButton({}) { Icon(Icons.Rounded.MoreVert, "More") }
+                IconButton(actions.more) { Icon(Icons.Rounded.MoreVert, "More") }
             }
             Spacer(Modifier.weight(0.6f))
-            Artwork(t.artworkUrl, t.id, null, Modifier.fillMaxWidth().aspectRatio(1f).shadow(32.dp, RoundedCornerShape(12.dp), spotColor = Rift.Accent), corner = 12.dp)
+            if (lyrics.showing) LyricsPanel(lyrics, state.positionMs, actions.seek, Modifier.fillMaxWidth().aspectRatio(0.9f))
+            else Artwork(t.artworkUrl, t.id, null, Modifier.fillMaxWidth().aspectRatio(1f).shadow(32.dp, RoundedCornerShape(12.dp), spotColor = Rift.Accent), corner = 12.dp)
             Spacer(Modifier.weight(0.6f))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
@@ -156,7 +199,8 @@ fun NowPlayingScreen(state: PlayerState, liked: Boolean, actions: PlayerActions,
                 Icon(Icons.AutoMirrored.Rounded.QueueMusic, null, tint = Color.White.copy(alpha = 0.7f))
                 Spacer(Modifier.width(8.dp))
                 val upNext = state.queue.getOrNull(state.index + 1)
-                Text(if (upNext != null) "Up next: ${upNext.title}" else "End of queue", style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.7f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(if (upNext != null) "Up next: ${upNext.title}" else "End of queue", style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.7f), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                IconButton(actions.lyrics) { Icon(Icons.Rounded.Lyrics, "Lyrics", tint = if (lyrics.showing) Rift.AccentLight else Color.White.copy(alpha = 0.7f)) }
             }
         }
     }

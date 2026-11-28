@@ -1,5 +1,6 @@
 package com.nopethedev.riftsolo
 
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
@@ -128,4 +129,39 @@ class ScreenshotTest {
         }
     }
     @Test fun nowPlaying() = shot("13_now_playing") { NowPlayingScreen(playing, liked = true, actions = PlayerActions()) }
+
+    private val artists = listOf("Glass Coast", "Paper Moons", "Wildwire", "The Quiet Hour", "Low Orbit").map { com.nopethedev.riftsolo.core.taste.ArtistPick(com.nopethedev.riftsolo.core.taste.Artist(it), listOf("Solo Echoes", "Neon Drift"), 1.0) }
+    private val albums = listOf("Coastlines" to "Glass Coast", "Paper Planets" to "Paper Moons", "Live Wire" to "Wildwire").mapIndexed { i, (a, b) -> com.nopethedev.riftsolo.core.taste.AlbumPick(com.nopethedev.riftsolo.core.taste.Album(a, b, i + 1L, year = "202${i + 2}"), b) }
+
+    @Test fun homeDiscovery() = main("17_home_fans_also_like", Tab.HOME) { pad ->
+        HomeScreen(HomeState("Alex", "headphones:violet", "Good evening", 5, emptyList(), listOf(
+            HomeRow("foryou", "Made for Alex", "Picked from what you play", songs.shuffled(java.util.Random(3))),
+            HomeRow("like:a1", "More like Midnight Signal", "Solo Echoes", songs.shuffled(java.util.Random(4))),
+            HomeRow("synthwave", "Synthwave mix", "Made for Alex", songs.shuffled(java.util.Random(1))),
+        ), artists, albums), HomeActions(), pad)
+    }
+    @Test fun trackMenu() = shot("18_song_menu") {
+        androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.fillMaxSize().background(Color(0x99000000)), contentAlignment = androidx.compose.ui.Alignment.BottomCenter) {
+            androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.fillMaxWidth().background(com.nopethedev.riftsolo.ui.theme.Rift.Surface, androidx.compose.foundation.shape.RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)).padding(top = 24.dp)) {
+                com.nopethedev.riftsolo.ui.components.TrackMenuContent(
+                    com.nopethedev.riftsolo.ui.components.TrackMenuState(songs[1], liked = true, following = false, playlistName = "Late night coding"),
+                    com.nopethedev.riftsolo.ui.components.TrackMenuActions(removeFromPlaylist = {}), {})
+            }
+        }
+    }
+    @Test fun artistPage() = main("19_artist", Tab.HOME) { pad ->
+        com.nopethedev.riftsolo.ui.artist.ArtistScreen(
+            com.nopethedev.riftsolo.ui.artist.ArtistPageState(com.nopethedev.riftsolo.core.taste.Artist("Solo Echoes", fans = 184_220), following = true, loading = false,
+                top = songs.take(5), albums = albums.map { it.album }, related = artists.map { it.artist }),
+            com.nopethedev.riftsolo.ui.artist.ArtistPageActions(), songs[0].id, setOf(songs[1].id), pad)
+    }
+    @Test fun lyrics() = shot("20_lyrics") {
+        NowPlayingScreen(playing, liked = true, actions = PlayerActions(), lyrics = com.nopethedev.riftsolo.ui.player.LyricsUi(showing = true, lyrics = com.nopethedev.riftsolo.core.lyrics.Lyrics(
+            listOf("Neon on the water", "Signal in the static", "We drive until the morning", "Radio keeps us talking", "Midnight, midnight signal", "Calling from the coastline", "").mapIndexed { i, l -> com.nopethedev.riftsolo.core.lyrics.Lyrics.Line(l, 50_000L + i * 9_000L) },
+            "YouTube Music via Lavalink")))
+    }
+    @Test fun profileAccount() = main("21_profile_account", Tab.PROFILE) { pad ->
+        ProfileScreen(profileState(settings.copy(allowAllSongs = true), library, ready).copy(taste = taste, cacheBytes = 2_400_000,
+            account = com.nopethedev.riftsolo.ui.profile.AccountUi("https://rift.example.com", "alex@example.com", "Alex", lastSyncAt = System.currentTimeMillis() - 120_000)), ProfileActions(), pad)
+    }
 }
