@@ -80,17 +80,35 @@ jobs:
         if: always() && runner.os == 'Linux'
         with: { name: desktop-screenshots, path: desktop/build/desktop-*.png, if-no-files-found: ignore }
 
+  # Every push to main (and every v* tag) publishes a GitHub release with the APK and the installers.
   release:
     name: Release
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
     needs: [android, desktop]
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
+      - name: Version
+        id: v
+        run: |
+          VERSION=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then TAG="$GITHUB_REF_NAME"; else TAG="v$VERSION-build.$GITHUB_RUN_NUMBER"; fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "name=Rift Solo $VERSION (build $GITHUB_RUN_NUMBER)" >> "$GITHUB_OUTPUT"
       - uses: actions/download-artifact@v4
         with: { path: dist, pattern: "{android,desktop-Windows,desktop-Linux,desktop-macOS}", merge-multiple: true }
+      - name: Name files by version
+        run: |
+          cd dist
+          for f in RiftSolo-*-android.apk; do mv "$f" "RiftSolo-${{ steps.v.outputs.tag }}-android.apk"; done
+          ls -la
       - uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.v.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          name: ${{ steps.v.outputs.name }}
+          make_latest: "true"
           files: dist/*
           generate_release_notes: true

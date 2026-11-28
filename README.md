@@ -90,7 +90,7 @@ Requirements: JDK 17+ (21 recommended) and, for Android, the Android SDK (platfo
 ./gradlew :app:recordRoborazziDebug                 # renders every Android screen into app/screenshots/
 ```
 
-**GitHub Actions** (`.github/workflows/build.yml`) runs on every push. It tests everything and builds the Android APK, the Windows `.msi`/`.exe`, the Linux `.deb`/`.rpm` and the macOS `.dmg`, all downloadable from the run's artifacts. Pushing a `v*` tag also publishes them as a GitHub release. The macOS build isn't notarized, so the first time you open it, right-click the app and choose Open.
+**GitHub Actions** (`.github/workflows/build.yml`) runs on every push. It tests everything and builds the Android APK, the Windows `.msi`/`.exe`, the Linux `.deb`/`.rpm` and the macOS `.dmg`, all downloadable from the run's artifacts. Every push to `main` (and every `v*` tag) also publishes them as a GitHub release (`v<version>-build.<n>`). The macOS build isn't notarized, so the first time you open it, right-click the app and choose Open.
 
 **Discord presence** needs a Discord application. Create one named "Rift Solo" at <https://discord.com/developers/applications> (Discord shows the app's name), then pass its Application ID in one of these ways:
 - as a repository secret named `DISCORD_APP_ID`, for CI builds;
