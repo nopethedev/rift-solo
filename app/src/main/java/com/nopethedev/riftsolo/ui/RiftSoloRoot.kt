@@ -5,7 +5,12 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.material3.NavigationBarDefaults
 import com.nopethedev.riftsolo.ui.components.Glass
-import com.nopethedev.riftsolo.ui.components.GlassPanel
+import com.nopethedev.riftsolo.ui.components.LocalGlassBar
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
 import com.nopethedev.riftsolo.core.sync.SyncManager
 import com.nopethedev.riftsolo.core.taste.Taste
 import com.nopethedev.riftsolo.ui.artist.AlbumPageState
@@ -378,16 +383,20 @@ fun MainScaffold(
                         }
                     }
                 }
-                if (glass && Glass.supported) {
-                    // Floating glass pill; the lists keep scrolling underneath it.
-                    Column(Modifier.navigationBarsPadding().padding(horizontal = 12.dp, vertical = 8.dp)) {
-                        GlassPanel(28.dp, Modifier.fillMaxWidth()) {
-                            Column(Modifier.padding(top = 6.dp)) {
-                                MiniPlayer(player, liked, playerActions, Modifier.padding(bottom = 2.dp))
-                                nav(true)
-                            }
+                val glassBar = LocalGlassBar.current
+                if (glass && Glass.supported && glassBar != null) {
+                    // The glass pill is drawn by a separate view laid over the app (see GlassOverlay); here we only hand
+                    // it the bar and leave room for it, so lists still scroll underneath.
+                    val content: @Composable () -> Unit = {
+                        Column(Modifier.padding(top = 6.dp)) {
+                            MiniPlayer(player, liked, playerActions, Modifier.padding(bottom = 2.dp))
+                            nav(true)
                         }
                     }
+                    SideEffect { glassBar.content = if (nowPlaying) null else content }
+                    DisposableEffect(glassBar) { onDispose { glassBar.content = null } }
+                    val h = with(LocalDensity.current) { glassBar.heightPx.toDp() }
+                    Spacer(Modifier.navigationBarsPadding().padding(bottom = 12.dp).height(if (h > 0.dp) h else 140.dp))
                 } else Column(Modifier.background(Brush.verticalGradient(listOf(Color.Transparent, Rift.Bg.copy(alpha = 0.97f), Rift.Bg), 0f, 120f))) {
                     MiniPlayer(player, liked, playerActions, Modifier.padding(bottom = 4.dp))
                     nav(false)
