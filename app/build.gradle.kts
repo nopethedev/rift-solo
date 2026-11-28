@@ -14,8 +14,19 @@ android {
         applicationId = "com.nopethedev.riftsolo"
         minSdk = 26
         targetSdk = 36
-        versionCode = 5
-        versionName = "0.4.1"
+        versionCode = 6
+        versionName = "0.4.2"
+    }
+
+    // One fixed key for every build (local and GitHub Actions), so a new APK installs over the old one. Without it each
+    // machine signs with its own random debug key and Android refuses the update ("conflicts with an existing package").
+    signingConfigs {
+        getByName("debug") {
+            storeFile = file("signing/rift-solo-debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
     }
 
     buildTypes {

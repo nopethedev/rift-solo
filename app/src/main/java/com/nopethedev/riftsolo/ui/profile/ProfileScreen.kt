@@ -79,7 +79,7 @@ data class ProfileState(
     val nodeStatus: Map<String, NodeStatus> = emptyMap(),
     val components: Map<ComponentId, ComponentState> = emptyMap(),
     val allowAllSongs: Boolean = false,
-    val version: String = "0.4.1",
+    val version: String = "0.4.2",
     val taste: TasteProfile = TasteProfile(),
     val batteryUnrestricted: Boolean = true,
     val notificationsAllowed: Boolean = true,
